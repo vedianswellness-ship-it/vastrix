@@ -8,6 +8,16 @@ class DatabaseManager:
         # Default database and collection names
         self.db = self.client["my_database"]
         self.collection = self.db["my_collection"]
+        # Inside db_manager.py
+@st.cache_resource
+def _init_connection(_self):
+    try:
+        # Hardcode temporarily just to test the connection locally
+        connection_string = "mongodb+srv://shona_db_user:YOUR_NEW_SECRET_PASSWORD@cluster0.eotergv.mongodb.net/?retryWrites=true&w=majority"
+        return pymongo.MongoClient(connection_string)
+    except Exception as e:
+        st.error(f"Failed to connect to MongoDB: {e}")
+        raise
 
     @st.cache_resource
     def _init_connection(_self):
