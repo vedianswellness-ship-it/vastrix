@@ -13,11 +13,9 @@ st.set_page_config(
 # Mobile Custom Layout Adjustments
 st.markdown("""
     <style>
-    /* Reduce excessive vertical padding on small screens */
     .block-container { 
         padding: 1.5rem 1rem !important; 
     }
-    /* Style form buttons to be prominent and touch-friendly */
     div.stButton > button { 
         width: 100%; 
         height: 3.2rem; 
@@ -25,7 +23,6 @@ st.markdown("""
         border-radius: 8px; 
         font-weight: bold; 
     }
-    /* Style KPI dashboard metrics cards */
     .kpi-card { 
         background: #ffffff; 
         padding: 16px; 
@@ -46,7 +43,6 @@ st.markdown("""
         text-transform: uppercase; 
         letter-spacing: 0.5px; 
     }
-    /* Style database records like clean mobile info-cards */
     .log-card { 
         background: #fdfdfd; 
         padding: 12px; 
@@ -65,7 +61,7 @@ st.markdown("<h2 style='margin-bottom:0;'>🏭 Vastrix Smart ERP</h2>", unsafe_a
 st.caption("Garment Production Tracking System • Mobile Supervisor Interface")
 
 # Native mobile-friendly tab bar navigation
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🪡 Piece Entry", "⚙️ Masters", "👥 Workers"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "📝 Daily Log", "⚙️ Masters", "👥 Workers"])
 
 # --- TAB 1: OVERVIEW & DASHBOARD ---
 with tab1:
@@ -76,51 +72,107 @@ with tab1:
     with col1:
         st.markdown(f"<div class='kpi-card'><div class='kpi-value'>{stats['pieces_produced']}</div><div class='kpi-label'>Pieces Checked</div></div>", unsafe_allow_html=True)
     with col2:
-        st.markdown(f"<div class='kpi-card'><div class='kpi-value'>₹{stats['payout_incurred']:.2f}</div><div class='kpi-label'>Piece Wage Owed</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='kpi-card'><div class='kpi-value'>₹{stats['payout_incurred']:.2f}</div><div class='kpi-label'>Total Wage Earned</div></div>", unsafe_allow_html=True)
 
     st.write("---")
-    st.subheader("Recent Production Logs")
+    st.subheader("Recent Activity Logs")
     
     all_logs = sorted(db.daily_work.find(), key=lambda x: x.get('timestamp', datetime.now()), reverse=True)[:5]
     if not all_logs:
-        st.info("No pieces processed yet today.")
+        st.info("No logs entry submitted yet today.")
     else:
         for log in all_logs:
-            st.markdown(f"""
-            <div class='log-card'>
-                <strong>{log.get('employee')}</strong> completed <strong>{log.get('qty')} pcs</strong> of {log.get('item_type')} ({log.get('process')})<br/>
-                <span style='color:#2e7d32; font-weight:600;'>Earnings: ₹{log.get('total_amount')}</span> <span style='color:#888; font-size:0.8rem; float:right;'>{log.get('date')}</span>
-            </div>
-            """, unsafe_allow_html=True)
+            if log.get("type") == "Salary Attendance":
+                st.markdown(f"""
+                <div class='log-card' style='border-left-color: #4CAF50;'>
+                    <strong>{log.get('employee')} (Salary Base)</strong> marked as <strong>{log.get('status')}</strong><br/>
+                    <span style='color:#2e7d32; font-weight:600;'>Daily Share: ₹{log.get('total_amount'):.2f}</span> <span style='color:#888; font-size:0.8rem; float:right;'>{log.get('date')}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class='log-card'>
+                    <strong>{log.get('employee')}</strong> completed <strong>{log.get('qty')} pcs</strong> of {log.get('item_type')} ({log.get('process')})<br/>
+                    <span style='color:#2e7d32; font-weight:600;'>Earnings: ₹{log.get('total_amount'):.2f}</span> <span style='color:#888; font-size:0.8rem; float:right;'>{log.get('date')}</span>
+                </div>
+                """, unsafe_allow_html=True)
 
-# --- TAB 2: ONE-CLICK DAILY PIECE WORK ENTRY ---
+# --- TAB 2: SMART DAILY WORK / ATTENDANCE ENTRY ---
 with tab2:
-    st.subheader("Supervisor Piece-Work Log")
+    st.subheader("Daily Work Entry System")
     
     employees = db.get_all_employees()
     processes = db.get_all_processes()
     
-    if not employees or not processes:
-        st.warning("⚠️ Setup your Workers and Process Rates in the Masters tabs first before logging work!")
+    if not employees:
+        st.warning("⚠️ Setup your Workers in the Masters tab first before logging daily entries!")
     else:
-        emp_names = [e["name"] for e in employees]
-        process_labels = [f"{p['item_type']} - {p['process_name']} (₹{p['rate']}/pc)" for p in processes]
+        # Create dictionary mapping employee names to full profile details
+        emp_map = {e["name"]: e for e in employees}
+        selected_emp_name = st.selectbox("Select Worker Name", list(emp_map.keys()))
+        selected_emp_profile = emp_map[selected_emp_name]
         
-        selected_emp = st.selectbox("Select Tailor / Operator", emp_names)
-        selected_proc_idx = st.selectbox("Select Process & Operation", range(len(process_labels)), format_func=lambda x: process_labels[x])
+        st.info(f"📋 Profile Target Type: **{selected_emp_profile['emp_type']}**")
         
-        target_process = processes[selected_proc_idx]
-        qty_input = st.number_input("Quantity Checked (Pcs)", min_value=1, value=100, step=10)
-        
-        # Real-time calculated feedback payout metrics
-        est_payout = qty_input * target_process['rate']
-        st.metric(label="Calculated Payout Amount", value=f"₹{est_payout:.2f}", delta=f"Rate: ₹{target_process['rate']}/pc")
-        
-        if st.button("⚡ Submit Log to Wallet"):
-            res = db.log_piece_work(datetime.today(), selected_emp, target_process, qty_input)
-            if res:
-                st.success(f"Successfully tracked {qty_input} pieces for {selected_emp}!")
-                st.rerun()
+        # INTERFACE BRANCH 1: Worker is Salary Based
+        if selected_emp_profile["emp_type"] == "Salary Basis":
+            st.write("### Attendance Details")
+            status = st.radio("Attendance Status", ["Full Present", "Half Day", "Leave/Absent"], horizontal=True)
+            overtime_hours = st.number_input("Overtime Hours", min_value=0, max_value=8, value=0, step=1)
+            
+            # Smart Calculations based on standard 30-day working framework
+            monthly_base = selected_emp_profile.get("base_salary", 0.0)
+            daily_rate = monthly_base / 30.0
+            hourly_ot_rate = (daily_rate / 8.0) * 1.5  # Time-and-a-half calculation
+            
+            # Status multi-mapping calculation
+            multiplier = 1.0 if status == "Full Present" else (0.5 if status == "Half Day" else 0.0)
+            calculated_daily_wage = (daily_rate * multiplier) + (overtime_hours * hourly_ot_rate)
+            
+            st.metric(label="Calculated Day Salary Share", value=f"₹{calculated_daily_wage:.2f}", 
+                      delta=f"Base Rate: ₹{daily_rate:.2f}/day")
+            
+            if st.button("⚡ Submit Attendance to Wallet"):
+                payload = {
+                    "date": datetime.today().strftime("%Y-%m-%d"),
+                    "employee": selected_emp_name,
+                    "type": "Salary Attendance",
+                    "status": status,
+                    "ot_hours": overtime_hours,
+                    "total_amount": calculated_daily_wage
+                }
+                if db.log_daily_entry(payload):
+                    st.success(f"Attendance recorded safely for {selected_emp_name}!")
+                    st.rerun()
+                    
+        # INTERFACE BRANCH 2: Worker is Piece Rate or Contractor
+        else:
+            if not processes:
+                st.warning("⚠️ Setup your Process Rates in the Masters tab to submit piece entries!")
+            else:
+                process_labels = [f"{p['item_type']} - {p['process_name']} (₹{p['rate']}/pc)" for p in processes]
+                selected_proc_idx = st.selectbox("Select Operation Log", range(len(process_labels)), format_func=lambda x: process_labels[x])
+                
+                target_process = processes[selected_proc_idx]
+                qty_input = st.number_input("Quantity Checked (Pcs)", min_value=1, value=100, step=10)
+                
+                est_payout = qty_input * target_process['rate']
+                st.metric(label="Calculated Payout Amount", value=f"₹{est_payout:.2f}", delta=f"Rate: ₹{target_process['rate']}/pc")
+                
+                if st.button("⚡ Submit Log to Wallet"):
+                    payload = {
+                        "date": datetime.today().strftime("%Y-%m-%d"),
+                        "employee": selected_emp_name,
+                        "type": "Piece Rate Work",
+                        "item_type": target_process.get("item_type"),
+                        "process": target_process.get("process_name"),
+                        "qty": int(qty_input),
+                        "rate": float(target_process.get("rate")),
+                        "total_amount": est_payout
+                    }
+                    if db.log_daily_entry(payload):
+                        st.success(f"Successfully tracked {qty_input} pieces for {selected_emp_name}!")
+                        st.rerun()
 
 # --- TAB 3: PROCESS MASTER SETTING ---
 with tab3:
@@ -145,10 +197,8 @@ with tab4:
         emp_name = st.text_input("Full Name")
         mobile = st.text_input("Mobile Number")
         
-        # Select Compensation Model
         emp_type = st.selectbox("Compensation Model", ["Piece Rate Basis", "Salary Basis", "Contractor"])
         
-        # Dynamic Variable: Instantiated only if Salary Basis is selected
         base_salary = 0.0
         if emp_type == "Salary Basis":
             base_salary = st.number_input("Monthly Base Salary (₹)", min_value=0, value=15000, step=500)
@@ -157,7 +207,6 @@ with tab4:
         
         if st.form_submit_button("Register Employee Account"):
             if emp_name and emp_id:
-                # Pass clean structural information to DatabaseManager instance
                 db.add_employee(emp_id, emp_name, mobile, emp_type, address, base_salary)
                 st.success(f"Registered {emp_name} successfully into the workforce ledger!")
                 st.rerun()
