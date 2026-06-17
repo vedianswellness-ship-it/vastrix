@@ -1,4 +1,7 @@
 import streamlit as st
+
+st.write("### What Streamlit can see in secrets:", st.secrets)
+import streamlit as st
 st.write(st.secrets)  # This will print your active secret keys on the screen to debug
 import streamlit as st
 import pymongo
