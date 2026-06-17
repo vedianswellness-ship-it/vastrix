@@ -1,41 +1,102 @@
 import streamlit as st
 import pymongo
+from datetime import datetime
 
 class DatabaseManager:
     def __init__(self):
-        """Initialize connection using Streamlit secrets."""
+        """Initialize connection and structure Vastrix collections."""
         self.client = self._init_connection()
-        # Default database and collection names
-        self.db = self.client["my_database"]
-        self.collection = self.db["my_collection"]
+        # Vastrix Database Core Collections
+        self.db = self.client["vastrix_erp"]
+        self.employees = self.db["employees"]
+        self.processes = self.db["processes"]
+        self.daily_work = self.db["daily_work"]
 
     @st.cache_resource
     def _init_connection(_self):
-        """Establishes and caches the MongoDB Connection."""
+        """Establishes a cached, secure connection to MongoDB."""
         if "mongo" not in st.secrets:
-            st.error("❌ Streamlit Secrets Error: The '[mongo]' section was not found in your settings!")
-            st.info("If you are on Streamlit Cloud, please open 'Manage app' -> 'Settings' -> 'Secrets' and paste your [mongo] credentials there.")
-            raise AttributeError("Missing [mongo] configuration block in secrets.")
-            
+            st.error("❌ Configuration Error: Please paste your [mongo] string into Streamlit settings.")
+            raise AttributeError("Missing database secret credentials.")
         try:
-            connection_string = st.secrets["mongo"]["connection_string"]
-            return pymongo.MongoClient(connection_string)
+            return pymongo.MongoClient(st.secrets["mongo"]["connection_string"])
         except Exception as e:
-            st.error(f"❌ MongoDB Connection failed: {e}")
+            st.error(f"❌ Database connection timeout: {e}")
             raise
 
-    def insert_record(self, data: dict):
-        """Inserts a single document into the collection."""
+    # --- EMPLOYEE MASTER OPERATIONS ---
+    def add_employee(self, emp_id, name, mobile, emp_type, address):
+        """Saves a new worker with their compensation profile."""
         try:
-            return self.collection.insert_one(data)
+            payload = {
+                "emp_id": emp_id,
+                "name": name,
+                "mobile": mobile,
+                "emp_type": emp_type,  # Salary Basis, Piece Rate, Contractor
+                "address": address,
+                "joining_date": datetime.now().strftime("%Y-%m-%d")
+            }
+            return self.employees.insert_one(payload)
         except Exception as e:
-            st.error(f"Error inserting record: {e}")
+            st.error(f"Error adding employee: {e}")
             return None
 
-    def fetch_all_records(self):
-        """Fetches all documents from the collection."""
+    def get_all_employees(self):
+        return list(self.employees.find({}, {"_id": 0}))
+
+    # --- PROCESS MASTER OPERATIONS ---
+    def add_process(self, item_type, process_name, machine, rate):
+        """Inserts unique task definitions into the piece-rate process master."""
         try:
-            return list(self.collection.find())
+            payload = {
+                "item_type": item_type,       # e.g., T-Shirt, Lower
+                "process_name": process_name, # e.g., Overlock, Flatlock, Steam Press
+                "machine": machine,
+                "rate": float(rate)           # Per-piece rate in ₹
+            }
+            return self.processes.insert_one(payload)
         except Exception as e:
-            st.error(f"Error fetching records: {e}")
-            return []
+            st.error(f"Error updating process master: {e}")
+            return None
+
+    def get_all_processes(self):
+        return list(self.processes.find({}, {"_id": 0}))
+
+    # --- QUICK TRANSACTION PIECE-WORK ENTRY ---
+    def log_piece_work(self, date, emp_name, process_details, qty):
+        """Logs daily supervisor data entry with an automated calculation engine."""
+        try:
+            rate = process_details.get("rate", 0)
+            total_amount = float(qty) * float(rate)
+            
+            payload = {
+                "date": date.strftime("%Y-%m-%d"),
+                "employee": emp_name,
+                "item_type": process_details.get("item_type"),
+                "process": process_details.get("process_name"),
+                "qty": int(qty),
+                "rate": float(rate),
+                "total_amount": total_amount,
+                "timestamp": datetime.now()
+            }
+            return self.daily_work.insert_one(payload)
+        except Exception as e:
+            st.error(f"Failed to submit piece work entry: {e}")
+            return None
+
+    def get_daily_summary_stats(self):
+        """Aggregates metrics for the manager dashboard screen."""
+        try:
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            today_entries = list(self.daily_work.find({"date": today_str}))
+            
+            total_pieces = sum(item.get("qty", 0) for item in today_entries)
+            total_payout = sum(item.get("total_amount", 0) for item in today_entries)
+            
+            return {
+                "pieces_produced": total_pieces,
+                "payout_incurred": total_payout,
+                "entries_count": len(today_entries)
+            }
+        except Exception as e:
+            return {"pieces_produced": 0, "payout_incurred": 0, "entries_count": 0}
