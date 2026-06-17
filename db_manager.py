@@ -11,7 +11,7 @@ class DatabaseManager:
         self.employees = self.db["employees"]
         self.daily_work = self.db["daily_work"]
         self.lots = self.db["lots"]  
-        self.products = self.db["products"]  # New Collection for Product Operations Blueprint
+        self.products = self.db["products"]  # Product Operations Blueprint
 
     @st.cache_resource
     def _init_connection(_self):
@@ -56,7 +56,6 @@ class DatabaseManager:
                 "operations": steps_list,  # List of dicts: [{"operation": "Overlock", "rate": 3.0}, ...]
                 "updated_at": datetime.now().strftime("%Y-%m-%d")
             }
-            # Update if exists, insert if new
             return self.products.update_one({"product_name": product_name}, {"$set": payload}, upsert=True)
         except Exception as e:
             st.error(f"Error updating product process profile: {e}")
@@ -73,11 +72,9 @@ class DatabaseManager:
             total_pcs = int(total_pcs)
             bundle_qty = int(bundle_qty)
             
-            # Fetch product template rules to verify operation workflow exists
             prod_template = self.products.find_one({"product_name": product_name})
             operations = prod_template.get("operations", []) if prod_template else []
 
-            # Auto-calculate sequential bundle cards layout
             bundles = []
             remaining_pcs = total_pcs
             bundle_index = 1
@@ -97,7 +94,7 @@ class DatabaseManager:
                 "lot_no": lot_no,
                 "product_name": product_name,
                 "total_pcs": total_pcs,
-                "operations_blueprint": operations,  # Embedded copy snapshot of operational costs
+                "operations_blueprint": operations,  
                 "bundles": bundles,
                 "created_at": datetime.now().strftime("%Y-%m-%d")
             }
@@ -107,8 +104,12 @@ class DatabaseManager:
             return None
 
     def get_active_lots(self):
-        """Fetches all cutting lots."""
-        return list(self.lots.find({}, {"_id": 0}))
+        """CRITICAL: Fetches all cutting lots for the dashboard and dynamic selects."""
+        try:
+            return list(self.lots.find({}, {"_id": 0}))
+        except Exception as e:
+            st.error(f"Error fetching active lots: {e}")
+            return []
 
     def update_bundle_status(self, lot_no, bundle_no, worker_name):
         """Marks a bundle as completed/assigned by a worker."""
