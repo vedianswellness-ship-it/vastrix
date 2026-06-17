@@ -107,7 +107,6 @@ with tab2:
                 selected_lot_no = st.selectbox("Select Cut Lot Number", lot_nos)
                 selected_lot_profile = next(l for l in active_lots if l["lot_no"] == selected_lot_no)
                 
-                # Filter out available bundles
                 available_bundles = [b for b in selected_lot_profile["bundles"] if b["status"] == "Available"]
                 
                 if not available_bundles:
@@ -117,7 +116,6 @@ with tab2:
                     selected_bundle_no = st.selectbox("Assign Bundle Card", bundle_nos)
                     selected_bundle_profile = next(b for b in available_bundles if b["bundle_no"] == selected_bundle_no)
                     
-                    # Fetch process operations attached explicitly to this lot blueprint
                     relevant_procs = selected_lot_profile.get("operations_blueprint", [])
                     
                     if not relevant_procs:
@@ -127,7 +125,7 @@ with tab2:
                         selected_proc_idx = st.selectbox("Select Completed Operation Step", range(len(proc_labels)), format_func=lambda x: proc_labels[x])
                         target_process = relevant_procs[selected_proc_idx]
                         
-                        qty = sampled_qty = selected_bundle_profile["qty"]
+                        qty = selected_bundle_profile["qty"]
                         est_payout = qty * target_process['rate']
                         
                         st.markdown(f"**Pieces inside Bundle:** <span class='bundle-badge'>{qty} Pcs</span>", unsafe_allow_html=True)
@@ -170,13 +168,11 @@ with tab3:
 # --- TAB 4: PRODUCT & PROCESS MASTERS CONFIGURATION ---
 with tab4:
     st.subheader("⚙️ Global Configuration Masters")
-    
-    # Section: Product Complete Operation Profile Matrix Builder
     st.write("### Create Product Process Workflow Blueprint")
     
     product_name = st.text_input("Product Name", placeholder="e.g., Round Neck T-Shirt")
-    
     st.caption("Define cost parameters per single piece processing:")
+    
     col1, col2 = st.columns(2)
     with col1:
         c_rate = st.number_input("Cutting Rate (₹)", min_value=0.0, value=1.0, step=0.10)
@@ -190,7 +186,6 @@ with tab4:
 
     if st.button("💾 Save Full Product Master Template"):
         if product_name:
-            # Build operational data array structure
             ops_blueprint = [
                 {"op_name": "Cutting", "rate": c_rate},
                 {"op_name": "Stitching: Overlock", "rate": s_ol_rate},
@@ -201,10 +196,9 @@ with tab4:
                 {"op_name": "Packing", "rate": pk_rate}
             ]
             db.add_product_template(product_name, ops_blueprint)
-            st.success(f"Product Template for '{product_name}' successfully locked into cluster record matrix!")
+            st.success(f"Product Template for '{product_name}' saved successfully!")
             st.rerun()
 
-    # Simple layout list view of active rules
     st.write("---")
     st.write("### Existing Configuration Blueprints")
     existing_prods = db.get_all_products()
