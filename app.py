@@ -68,4 +68,5 @@ st.subheader("Stored Records")
 records = db_manager.fetch_all_records()
 
 if not records:
-    st.info("No records found in the database yet
+    st.info("No records found in the database yet.")  # <-- Make sure both quotes are there!
+else:
