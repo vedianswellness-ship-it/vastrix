@@ -104,7 +104,7 @@ class DatabaseManager:
             return None
 
     def get_active_lots(self):
-        """CRITICAL: Fetches all cutting lots for the dashboard and dynamic selects."""
+        """Fetches all cutting lots for the dashboard and dynamic selects."""
         try:
             return list(self.lots.find({}, {"_id": 0}))
         except Exception as e:
