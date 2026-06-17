@@ -2,17 +2,59 @@ import streamlit as st
 from datetime import datetime
 from db_manager import DatabaseManager
 
-st.set_page_config(page_title="Vastrix Mobile", page_icon="🏭", layout="centered", initial_sidebar_state="collapsed")
+# Optimize configuration for mobile viewports
+st.set_page_config(
+    page_title="Vastrix Mobile", 
+    page_icon="🏭", 
+    layout="centered", 
+    initial_sidebar_state="collapsed"
+)
 
 # Mobile Custom Layout Adjustments
 st.markdown("""
     <style>
-    .block-container { padding: 1.5rem 1rem !important; }
-    div.stButton > button { width: 100%; height: 3.2rem; font-size: 1.1rem; border-radius: 8px; font-weight: bold; }
-    .kpi-card { background: #ffffff; padding: 16px; border-radius: 12px; border-top: 4px solid #FF4B4B; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; margin-bottom: 10px; }
-    .kpi-value { font-size: 1.8rem; font-weight: bold; color: #111; }
-    .kpi-label { font-size: 0.85rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
-    .log-card { background: #fdfdfd; padding: 12px; border-radius: 8px; border-left: 4px solid #1E88E5; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    /* Reduce excessive vertical padding on small screens */
+    .block-container { 
+        padding: 1.5rem 1rem !important; 
+    }
+    /* Style form buttons to be prominent and touch-friendly */
+    div.stButton > button { 
+        width: 100%; 
+        height: 3.2rem; 
+        font-size: 1.1rem; 
+        border-radius: 8px; 
+        font-weight: bold; 
+    }
+    /* Style KPI dashboard metrics cards */
+    .kpi-card { 
+        background: #ffffff; 
+        padding: 16px; 
+        border-radius: 12px; 
+        border-top: 4px solid #FF4B4B; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
+        text-align: center; 
+        margin-bottom: 10px; 
+    }
+    .kpi-value { 
+        font-size: 1.8rem; 
+        font-weight: bold; 
+        color: #111; 
+    }
+    .kpi-label { 
+        font-size: 0.85rem; 
+        color: #666; 
+        text-transform: uppercase; 
+        letter-spacing: 0.5px; 
+    }
+    /* Style database records like clean mobile info-cards */
+    .log-card { 
+        background: #fdfdfd; 
+        padding: 12px; 
+        border-radius: 8px; 
+        border-left: 4px solid #1E88E5; 
+        margin-bottom: 8px; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -38,17 +80,18 @@ with tab1:
 
     st.write("---")
     st.subheader("Recent Production Logs")
-    # Quick pull of all records for proof of concept
+    
     all_logs = sorted(db.daily_work.find(), key=lambda x: x.get('timestamp', datetime.now()), reverse=True)[:5]
     if not all_logs:
         st.info("No pieces processed yet today.")
-    for log in all_logs:
-        st.markdown(f"""
-        <div class='log-card'>
-            <strong>{log.get('employee')}</strong> completed <strong>{log.get('qty')} pcs</strong> of {log.get('item_type')} ({log.get('process')})<br/>
-            <span style='color:#2e7d32; font-weight:600;'>Earnings: ₹{log.get('total_amount')}</span> <span style='color:#888; font-size:0.8rem; float:right;'>{log.get('date')}</span>
-        </div>
-        """, unsafe_allow_html=True)
+    else:
+        for log in all_logs:
+            st.markdown(f"""
+            <div class='log-card'>
+                <strong>{log.get('employee')}</strong> completed <strong>{log.get('qty')} pcs</strong> of {log.get('item_type')} ({log.get('process')})<br/>
+                <span style='color:#2e7d32; font-weight:600;'>Earnings: ₹{log.get('total_amount')}</span> <span style='color:#888; font-size:0.8rem; float:right;'>{log.get('date')}</span>
+            </div>
+            """, unsafe_allow_html=True)
 
 # --- TAB 2: ONE-CLICK DAILY PIECE WORK ENTRY ---
 with tab2:
@@ -69,7 +112,7 @@ with tab2:
         target_process = processes[selected_proc_idx]
         qty_input = st.number_input("Quantity Checked (Pcs)", min_value=1, value=100, step=10)
         
-        # Real-time calculated feedback layout directly below inputs
+        # Real-time calculated feedback payout metrics
         est_payout = qty_input * target_process['rate']
         st.metric(label="Calculated Payout Amount", value=f"₹{est_payout:.2f}", delta=f"Rate: ₹{target_process['rate']}/pc")
         
@@ -101,11 +144,20 @@ with tab4:
         emp_id = st.text_input("Employee Card/ID Number")
         emp_name = st.text_input("Full Name")
         mobile = st.text_input("Mobile Number")
+        
+        # Select Compensation Model
         emp_type = st.selectbox("Compensation Model", ["Piece Rate Basis", "Salary Basis", "Contractor"])
+        
+        # Dynamic Variable: Instantiated only if Salary Basis is selected
+        base_salary = 0.0
+        if emp_type == "Salary Basis":
+            base_salary = st.number_input("Monthly Base Salary (₹)", min_value=0, value=15000, step=500)
+            
         address = st.text_input("Residential Address/Village Name")
         
         if st.form_submit_button("Register Employee Account"):
             if emp_name and emp_id:
-                db.add_employee(emp_id, emp_name, mobile, emp_type, address)
+                # Pass clean structural information to DatabaseManager instance
+                db.add_employee(emp_id, emp_name, mobile, emp_type, address, base_salary)
                 st.success(f"Registered {emp_name} successfully into the workforce ledger!")
                 st.rerun()
