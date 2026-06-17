@@ -25,8 +25,8 @@ class DatabaseManager:
             raise
 
     # --- EMPLOYEE MASTER OPERATIONS ---
-    def add_employee(self, emp_id, name, mobile, emp_type, address):
-        """Saves a new worker with their compensation profile."""
+    def add_employee(self, emp_id, name, mobile, emp_type, address, base_salary=0.0):
+        """Saves a new worker with their compensation profile and base salary if applicable."""
         try:
             payload = {
                 "emp_id": emp_id,
@@ -34,7 +34,8 @@ class DatabaseManager:
                 "mobile": mobile,
                 "emp_type": emp_type,  # Salary Basis, Piece Rate, Contractor
                 "address": address,
-                "joining_date": datetime.now().strftime("%Y-%m-%d")
+                "joining_date": datetime.now().strftime("%Y-%m-%d"),
+                "base_salary": float(base_salary) if emp_type == "Salary Basis" else 0.0
             }
             return self.employees.insert_one(payload)
         except Exception as e:
@@ -42,6 +43,7 @@ class DatabaseManager:
             return None
 
     def get_all_employees(self):
+        """Fetches all workers registered in the factory system."""
         return list(self.employees.find({}, {"_id": 0}))
 
     # --- PROCESS MASTER OPERATIONS ---
@@ -60,6 +62,7 @@ class DatabaseManager:
             return None
 
     def get_all_processes(self):
+        """Fetches all defined garment production rates."""
         return list(self.processes.find({}, {"_id": 0}))
 
     # --- QUICK TRANSACTION PIECE-WORK ENTRY ---
