@@ -9,8 +9,9 @@ class DatabaseManager:
         # Vastrix Database Core Collections
         self.db = self.client["vastrix_erp"]
         self.employees = self.db["employees"]
-        self.processes = self.db["processes"]
         self.daily_work = self.db["daily_work"]
+        self.lots = self.db["lots"]  
+        self.products = self.db["products"]  # New Collection for Product Operations Blueprint
 
     @st.cache_resource
     def _init_connection(_self):
@@ -32,7 +33,7 @@ class DatabaseManager:
                 "emp_id": emp_id,
                 "name": name,
                 "mobile": mobile,
-                "emp_type": emp_type,  # Salary Basis, Piece Rate Basis, Contractor
+                "emp_type": emp_type,
                 "address": address,
                 "joining_date": datetime.now().strftime("%Y-%m-%d"),
                 "base_salary": float(base_salary) if emp_type == "Salary Basis" else 0.0
@@ -46,26 +47,83 @@ class DatabaseManager:
         """Fetches all workers registered in the factory system."""
         return list(self.employees.find({}, {"_id": 0}))
 
-    # --- PROCESS MASTER OPERATIONS ---
-    def add_process(self, item_type, process_name, machine, rate):
-        """Inserts unique task definitions into the piece-rate process master."""
+    # --- PRODUCT PROCESS BLUEPRINT MASTER ---
+    def add_product_template(self, product_name, steps_list):
+        """Saves a product profile alongside its complete engineering operation sequence & rates."""
         try:
             payload = {
-                "item_type": item_type,       # e.g., T-Shirt, Lower
-                "process_name": process_name, # e.g., Overlock, Flatlock, Steam Press
-                "machine": machine,
-                "rate": float(rate)           # Per-piece rate in ₹
+                "product_name": product_name,
+                "operations": steps_list,  # List of dicts: [{"operation": "Overlock", "rate": 3.0}, ...]
+                "updated_at": datetime.now().strftime("%Y-%m-%d")
             }
-            return self.processes.insert_one(payload)
+            # Update if exists, insert if new
+            return self.products.update_one({"product_name": product_name}, {"$set": payload}, upsert=True)
         except Exception as e:
-            st.error(f"Error updating process master: {e}")
+            st.error(f"Error updating product process profile: {e}")
             return None
 
-    def get_all_processes(self):
-        """Fetches all defined garment production rates."""
-        return list(self.processes.find({}, {"_id": 0}))
+    def get_all_products(self):
+        """Fetches all product routing templates."""
+        return list(self.products.find({}, {"_id": 0}))
 
-    # --- TRANSACTION ENTRIES (PIECE-WORK OR ATTENDANCE/SALARY CALCS) ---
+    # --- CUTTING DEPARTMENT (LOT & BUNDLE CREATION) ---
+    def create_cutting_lot(self, lot_no, product_name, total_pcs, bundle_qty):
+        """Creates a cutting lot linked to a product's operations template."""
+        try:
+            total_pcs = int(total_pcs)
+            bundle_qty = int(bundle_qty)
+            
+            # Fetch product template rules to verify operation workflow exists
+            prod_template = self.products.find_one({"product_name": product_name})
+            operations = prod_template.get("operations", []) if prod_template else []
+
+            # Auto-calculate sequential bundle cards layout
+            bundles = []
+            remaining_pcs = total_pcs
+            bundle_index = 1
+            
+            while remaining_pcs > 0:
+                current_bundle_size = min(bundle_qty, remaining_pcs)
+                bundles.append({
+                    "bundle_no": f"{lot_no}-B{bundle_index}",
+                    "qty": current_bundle_size,
+                    "status": "Available",
+                    "assigned_to": None
+                })
+                remaining_pcs -= current_bundle_size
+                bundle_index += 1
+
+            payload = {
+                "lot_no": lot_no,
+                "product_name": product_name,
+                "total_pcs": total_pcs,
+                "operations_blueprint": operations,  # Embedded copy snapshot of operational costs
+                "bundles": bundles,
+                "created_at": datetime.now().strftime("%Y-%m-%d")
+            }
+            return self.lots.insert_one(payload)
+        except Exception as e:
+            st.error(f"Failed to save cutting lot: {e}")
+            return None
+
+    def get_active_lots(self):
+        """Fetches all cutting lots."""
+        return list(self.lots.find({}, {"_id": 0}))
+
+    def update_bundle_status(self, lot_no, bundle_no, worker_name):
+        """Marks a bundle as completed/assigned by a worker."""
+        try:
+            self.lots.update_one(
+                {"lot_no": lot_no, "bundles.bundle_no": bundle_no},
+                {"$set": {
+                    "bundles.$.status": "Completed",
+                    "bundles.$.assigned_to": worker_name
+                }}
+            )
+        except Exception as e:
+            st.error(f"Failed to lock bundle tracking: {e}")
+
+    # --- TRANSACTION ENTRIES ---
     def log_daily_entry(self, payload):
         """Logs daily worker transaction (Piece work or Salary Attendance)."""
         try:
