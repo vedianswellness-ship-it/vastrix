@@ -32,7 +32,7 @@ class DatabaseManager:
                 "emp_id": emp_id,
                 "name": name,
                 "mobile": mobile,
-                "emp_type": emp_type,  # Salary Basis, Piece Rate, Contractor
+                "emp_type": emp_type,  # Salary Basis, Piece Rate Basis, Contractor
                 "address": address,
                 "joining_date": datetime.now().strftime("%Y-%m-%d"),
                 "base_salary": float(base_salary) if emp_type == "Salary Basis" else 0.0
@@ -65,26 +65,14 @@ class DatabaseManager:
         """Fetches all defined garment production rates."""
         return list(self.processes.find({}, {"_id": 0}))
 
-    # --- QUICK TRANSACTION PIECE-WORK ENTRY ---
-    def log_piece_work(self, date, emp_name, process_details, qty):
-        """Logs daily supervisor data entry with an automated calculation engine."""
+    # --- TRANSACTION ENTRIES (PIECE-WORK OR ATTENDANCE/SALARY CALCS) ---
+    def log_daily_entry(self, payload):
+        """Logs daily worker transaction (Piece work or Salary Attendance)."""
         try:
-            rate = process_details.get("rate", 0)
-            total_amount = float(qty) * float(rate)
-            
-            payload = {
-                "date": date.strftime("%Y-%m-%d"),
-                "employee": emp_name,
-                "item_type": process_details.get("item_type"),
-                "process": process_details.get("process_name"),
-                "qty": int(qty),
-                "rate": float(rate),
-                "total_amount": total_amount,
-                "timestamp": datetime.now()
-            }
+            payload["timestamp"] = datetime.now()
             return self.daily_work.insert_one(payload)
         except Exception as e:
-            st.error(f"Failed to submit piece work entry: {e}")
+            st.error(f"Failed to submit entry: {e}")
             return None
 
     def get_daily_summary_stats(self):
@@ -93,7 +81,7 @@ class DatabaseManager:
             today_str = datetime.now().strftime("%Y-%m-%d")
             today_entries = list(self.daily_work.find({"date": today_str}))
             
-            total_pieces = sum(item.get("qty", 0) for item in today_entries)
+            total_pieces = sum(item.get("qty", 0) for item in today_entries if "qty" in item)
             total_payout = sum(item.get("total_amount", 0) for item in today_entries)
             
             return {
