@@ -1,39 +1,35 @@
 import streamlit as st
+# Import the DatabaseManager class we just made
+from db_manager import DatabaseManager
 
-st.write("### What Streamlit can see in secrets:", st.secrets)
-import streamlit as st
-st.write(st.secrets)  # This will print your active secret keys on the screen to debug
-import streamlit as st
-import pymongo
+st.set_page_config(page_title="My Managed Web App", layout="centered")
+st.title("🚀 Streamlit + MongoDB App Layout")
 
-# Page layout
-st.set_page_config(page_title="My MongoDB Web App", layout="centered")
-st.title("🚀 Streamlit + MongoDB Atlas")
+# Instantiate our database manager
+db_manager = DatabaseManager()
 
-# Connect to MongoDB using the connection string from secrets.toml
-@st.cache_resource
-def init_connection():
-    # Looks inside .streamlit/secrets.toml automatically
-    return pymongo.MongoClient(st.secrets["mongo"]["connection_string"])
-
-try:
-    client = init_connection()
-    db = client["my_database"]  # Feel free to change database name
-    collection = db["my_collection"]  # Feel free to change collection name
+# Form UI to insert data
+st.subheader("Add a Record")
+with st.form("add_item_form"):
+    name = st.text_input("Item Name")
+    notes = st.text_area("Notes")
+    submitted = st.form_submit_button("Save to Database")
     
-    st.success("Successfully connected to MongoDB Atlas!")
-    
-    # Simple UI Form to insert data to test it
-    st.subheader("Add a record to MongoDB")
-    with st.form("test_form"):
-        name = st.text_input("Item Name")
-        notes = st.text_area("Notes")
-        submitted = st.form_submit_button("Save to Database")
-        
-        if submitted and name:
-            collection.insert_one({"name": name, "notes": notes})
+    if submitted and name:
+        payload = {"name": name, "notes": notes}
+        result = db_manager.insert_record(payload)
+        if result:
+            st.success(f"Saved '{name}' successfully!")
             st.balloons()
-            st.success(f"Saved '{name}' to MongoDB!")
 
-except Exception as e:
-    st.error(f"Connection failed: {e}")
+st.write("---")
+
+# UI to view data
+st.subheader("Current Database Records")
+records = db_manager.fetch_all_records()
+
+if not records:
+    st.info("No records found in the database yet.")
+else:
+    for record in records:
+        st.write(f"**Name:** {record.get('name')} | **Notes:** {record.get('notes')}")
